@@ -10,26 +10,29 @@ class Player(models.Model):
 
 
 class HandHistory(models.Model):
-    CARDS = tuple((rank + color, rank + color) for rank in 'AKQJT98765432' for color in 'hdsc')
     date_played = models.DateTimeField(auto_now=True)
-    flop_cards = ArrayField(ArrayField(models.CharField(choices=CARDS, max_length=2), size=2), size=2, null=True)
-    turn_cards = ArrayField(models.CharField(choices=CARDS, max_length=2), null=True)
-    river_card = models.CharField(choices=CARDS, max_length=2, null=True)
 
 
-class PlayerSeat(models.Model):
-    SEATS = tuple((seat, seat) for seat in ('BB', 'SB', '0', '1', '2', '3', '4', '5'))
+class Street(models.Model):
+    CARDS = tuple((rank + color, rank + color) for rank in 'AKQJT98765432' for color in 'hdsc')
+    STREET_NAMES = tuple((i, name) for i, name in enumerate(('Preflop', 'Flop', 'Turn', 'River')))
+    cards = ArrayField(models.CharField(choices=CARDS, max_length=2), null=True)
+    hand_history = models.ForeignKey(HandHistory, on_delete=models.CASCADE, related_name='streets')
+    name = models.IntegerField(choices=STREET_NAMES)
+
+
+class Seat(models.Model):
+    SEATS = tuple((i, seat) for i, seat in enumerate(('BB', 'SB', '0', '1', '2', '3', '4', '5')))
     player = models.ForeignKey(Player, on_delete=models.DO_NOTHING, related_name='seats')
     hand_history = models.ForeignKey(HandHistory, on_delete=models.CASCADE, related_name='seats')
-    seat = models.CharField(choices=SEATS, max_length=2)
+    seat = models.IntegerField(choices=SEATS)
     chips = models.IntegerField(validators=[MinValueValidator(0)])
 
 
-class PlayerAction(models.Model):
-    ACTIONS = tuple((action, action) for action in ('Blind', 'Check', 'Call', 'Fold', 'Bet', 'Raise'))
+class Action(models.Model):
+    ACTIONS = tuple((i, action) for i, action in enumerate(('Blind', 'Check', 'Call', 'Fold', 'Bet', 'Raise')))
     player = models.ForeignKey(Player, on_delete=models.DO_NOTHING, related_name='actions')
-    hand_history = models.ForeignKey(PlayerSeat, on_delete=models.CASCADE, related_name='actions')
-    action = models.CharField(choices=ACTIONS, max_length=24)
+    street = models.ForeignKey(Street, on_delete=models.CASCADE, related_name='actions')
+    action = models.IntegerField(choices=ACTIONS)
     amount = models.IntegerField(validators=[MinValueValidator(0)])
     sequence_no = models.IntegerField(validators=[MinValueValidator(1)])
-    street_no = models.IntegerField(validators=[MinValueValidator(1)])

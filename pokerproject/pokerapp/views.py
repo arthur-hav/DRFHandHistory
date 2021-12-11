@@ -1,8 +1,7 @@
-from pokerapp.models import HandHistory, PlayerSeat, PlayerAction, Player
+from pokerapp.models import HandHistory, Seat, Action, Player, Street
 from rest_framework import permissions, viewsets
-from rest_framework.views import APIView
-from django.http import Http404
-from pokerapp.serializers import HandHistorySerializer, PlayerSeatSerializer, PlayerActionSerializer, PlayerSerializer
+from pokerapp.serializers import HandHistorySerializer, SeatSerializer, \
+        ActionSerializer, PlayerSerializer, StreetSerializer
 
 
 class HandHistoryViewSet(viewsets.ModelViewSet):
@@ -13,21 +12,33 @@ class HandHistoryViewSet(viewsets.ModelViewSet):
     serializer_class = HandHistorySerializer
     permission_classes = [permissions.IsAuthenticated]
 
+
 class PlayerSeatViewSet(viewsets.ModelViewSet):
     """
     API endpoint that allows users to be viewed or edited.
     """
-    queryset = PlayerSeat.objects.all()
-    serializer_class = PlayerSeatSerializer
+    queryset = Seat.objects.all()
+    serializer_class = SeatSerializer
     permission_classes = [permissions.IsAuthenticated]
+
 
 class PlayerActionViewSet(viewsets.ModelViewSet):
     """
     API endpoint that allows users to be viewed or edited.
     """
-    queryset = PlayerAction.objects.all()
-    serializer_class = PlayerActionSerializer
+    queryset = Action.objects.all()
+    serializer_class = ActionSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+
+class StreetViewSet(viewsets.ModelViewSet):
+    """
+    API endpoint that allows users to be viewed or edited.
+    """
+    queryset = Street.objects.all()
+    serializer_class = StreetSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
 
 class PlayerViewSet(viewsets.ModelViewSet):
     """
