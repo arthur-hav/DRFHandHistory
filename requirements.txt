@@ -1,0 +1,5 @@
+django
+djangorestframework
+pytest-django
+psycopg2-binary
+pytz
