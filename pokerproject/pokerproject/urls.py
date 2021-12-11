@@ -4,9 +4,10 @@ from pokerapp import views
 
 router = routers.DefaultRouter()
 router.register(r'hand_history', views.HandHistoryViewSet)
-router.register(r'actions', views.PlayerActionViewSet)
-router.register(r'seats', views.PlayerSeatViewSet)
+router.register(r'actions', views.ActionViewSet)
+router.register(r'seats', views.SeatViewSet)
 router.register(r'players', views.PlayerViewSet)
+router.register(r'streets', views.StreetViewSet)
 
 # Wire up our API using automatic URL routing.
 # Additionally, we include login URLs for the browsable API.

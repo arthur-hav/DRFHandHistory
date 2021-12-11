@@ -1,5 +1,7 @@
 django
 djangorestframework
+frozendict
 pytest-django
 psycopg2-binary
 pytz
+pytest-freezegun
