@@ -2,7 +2,6 @@ import pytest
 from freezegun import freeze_time
 from django.test import Client
 from pokerapp.models import HandHistory, Player, Seat, Action, Street
-from pokerapp.views import HandHistoryViewSet
 from django.contrib.auth.models import User
 
 
@@ -150,3 +149,7 @@ class TestPokerApp:
         hh = login.post('/hand_history/', data=self.test_hh_full, content_type='application/json')
 
         assert hh.status_code == 201
+        assert len(list(Action.objects.all())) == 2
+        assert len(list(Street.objects.all())) == 1
+        assert len(list(Seat.objects.all())) == 2
+
