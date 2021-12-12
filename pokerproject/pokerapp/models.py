@@ -2,12 +2,38 @@ from django.db import models
 from django.core.validators import MinValueValidator
 from django.contrib.postgres.fields import ArrayField
 
-# Create your models here.
-
 
 class Player(models.Model):
     """A poker player. Identified by id or name."""
     name = models.CharField(max_length=48, unique=True)
+
+    def _get_stat(self, num_predicate, denom_predicate):
+        data = HandHistory.objects.all().filter(seats__player_id=self.id)
+        numerator = 0
+        denominator = 0
+        for hh in data:
+            if not denom_predicate(hh):
+                continue
+            next_data = False
+            streets = Street.objects.all().filter(hand_history_id=hh.id)
+            for street in streets:
+                actions = Action.objects.all().filter(street_id=street.id)
+                for action in actions:
+                    if num_predicate(action) and action.player_id == self.id:
+                        numerator += 1
+                        next_data = True
+                        break
+                if next_data:
+                    break
+        return 100 * numerator / max(denominator, 1)
+
+    def get_vpip(self):
+        return self._get_stat(num_predicate=lambda action: action.action in {2, 4, 5},
+                              denom_predicate=lambda hh: True)
+
+    def get_pfr(self):
+        return self._get_stat(num_predicate=lambda action: action.street.name == 0 and action.action in {4, 5},
+                              denom_predicate=lambda hh: True)
 
 
 class HandHistory(models.Model):

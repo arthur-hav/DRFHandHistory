@@ -12,7 +12,7 @@ from abc import ABC
 
 from .models import Player, Seat, Action, HandHistory, Street
 from django.db.models import ObjectDoesNotExist, Manager
-from rest_framework import serializers, relations
+from rest_framework import serializers, relations, fields
 
 
 class PlayerName(serializers.RelatedField):
@@ -70,6 +70,7 @@ class ExcludeFieldListSerializer(serializers.ListSerializer, ABC):
 
 class GenericUrl(serializers.HyperlinkedRelatedField):
     """Handy shortcut to display hand history as a link, but accept a simple id as post"""
+
     def __init__(self, ref_model, *args, **kwargs):
         kwargs['queryset'] = ref_model.objects.all()
         kwargs['required'] = False
@@ -182,9 +183,12 @@ class StreetSerializer(ModelAccessor):
 
 
 class PlayerSerializer(ModelAccessor):
+    vpip = fields.ReadOnlyField(source='get_vpip')
+    pfr = fields.ReadOnlyField(source='get_pfr')
+
     class Meta:
         model = Player
-        fields = ['id', 'url', 'name']
+        fields = ['id', 'url', 'name', 'vpip', 'pfr']
 
 
 class HandHistorySerializer(ModelAccessor):
@@ -197,4 +201,3 @@ class HandHistorySerializer(ModelAccessor):
         model = HandHistory
         ordering = ['date_played']
         fields = ['id', 'url', 'date_played', 'streets', 'seats']
-

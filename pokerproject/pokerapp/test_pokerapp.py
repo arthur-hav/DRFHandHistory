@@ -118,7 +118,7 @@ class TestPokerApp:
 
     @pytest.mark.parametrize("model,url,num_keys",
                              [(HandHistory, '/hand_history/', 5),
-                              (Player, '/players/', 3),
+                              (Player, '/players/', 5),
                               (Seat, '/seats/', 6),
                               (Action, '/actions/', 7),
                               (Street, '/streets/', 6)])
@@ -131,7 +131,7 @@ class TestPokerApp:
 
     @pytest.mark.parametrize("model,post_data,url,num_keys",
                              [(HandHistory, {}, '/hand_history/', 5),
-                              (Player, post_player, '/players/', 3),
+                              (Player, post_player, '/players/', 5),
                               (Seat, post_seat, '/seats/', 6),
                               (Action, post_action, '/actions/', 7),
                               (Street, post_street, '/streets/', 6)])
