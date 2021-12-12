@@ -93,7 +93,11 @@ class TestPokerApp:
         assert 'id' in hh_data
         assert hh_data['id'] == self.hh.id
         assert 'seats' in hh_data
-        assert hh_data['seats'] == [{'chips': 2000, 'seat': 'BB', 'player': 'Test Player', 'id': self.seat.id}]
+        assert hh_data['seats'] == [{'chips': 2000,
+                                     'seat': 'BB',
+                                     'player': 'Test Player',
+                                     'url': 'http://testserver/seats/1/',
+                                     'id': self.seat.id}]
         assert 'streets' in hh_data
         assert len(hh_data['streets']) == 1
         street = hh_data['streets'][0]
@@ -102,6 +106,7 @@ class TestPokerApp:
                                       'amount': 100,
                                       'player': 'Test Player',
                                       'sequence_no': 1,
+                                      'url': 'http://testserver/actions/1/',
                                       'id': self.action.id}]
         assert 'url' in hh_data
 
@@ -124,6 +129,8 @@ class TestPokerApp:
 
         street = login.post('/streets/', data=dict(hand_history=hh.id, **self.test_street_nested),
                             content_type='application/json')
+        print(street.json())
+
         assert street.status_code == 201
         assert len(list(Action.objects.all())) == 1
         assert len(list(Street.objects.all())) == 1
@@ -147,6 +154,8 @@ class TestPokerApp:
         player = insert_data(Player, self.test_player)
 
         hh = login.post('/hand_history/', data=self.test_hh_full, content_type='application/json')
+
+        print(hh.json())
 
         assert hh.status_code == 201
         assert len(list(Action.objects.all())) == 2

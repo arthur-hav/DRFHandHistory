@@ -68,21 +68,14 @@ class ExcludeFieldListSerializer(serializers.ListSerializer, ABC):
         return self.to_representation_exclude(data)
 
 
-class HandHistoryUrl(serializers.HyperlinkedRelatedField):
+class GenericUrl(serializers.HyperlinkedRelatedField):
     """Handy shortcut to display hand history as a link, but accept a simple id as post"""
-    def __init__(self, *args, **kwargs):
-        kwargs['queryset'] = HandHistory.objects.all()
-        kwargs['view_name'] = 'handhistory-detail'
+    def __init__(self, ref_model, *args, **kwargs):
+        kwargs['read_only'] = True
         super().__init__(*args, **kwargs)
-
-    def to_internal_value(self, data):
-        if isinstance(data, int):
-            return HandHistory.objects.get(pk=data)
-        return super().to_internal_value(data)
+        self.__ref_model = ref_model
 
     def to_representation(self, value):
-        if isinstance(value, HandHistory):
-            value = value.pk
         if isinstance(value, int):
             request = self.context['request']
             return self.reverse(self.view_name, kwargs={'pk': value}, request=request)
@@ -109,7 +102,6 @@ class ModelAccessor(serializers.HyperlinkedModelSerializer):
         for k, value in list(validated_data.items()):
             if k in self.cascade_create:
                 cascade_fields[k] = validated_data.pop(k)
-        print(self.__class__.__name__, validated_data)
         new_obj = super().create(validated_data)
         for key, cascade_data in cascade_fields.items():
             cascade_serializer = self.fields[key]
@@ -146,75 +138,52 @@ class ModelAccessor(serializers.HyperlinkedModelSerializer):
         list_serializer_class = ExcludeFieldListSerializer
 
 
-# Base serializers
-
-class BaseSeatSerializer(ModelAccessor):
+class SeatSerializer(ModelAccessor):
     player = PlayerName()
     seat = ChoicesDisplay(Seat.SEATS)
     _recurse_exclude = ['hand_history']
+    hand_history = GenericUrl(HandHistory, view_name='handhistory-detail')
 
     class Meta(ModelAccessor.Meta):
         ordering = ['seat']
         model = Seat
-        fields = ['id', 'player', 'seat', 'chips', 'hand_history']
+        fields = ['id', 'url', 'player', 'seat', 'chips', 'hand_history']
 
 
-class BaseActionSerializer(ModelAccessor):
+class ActionSerializer(ModelAccessor):
     player = PlayerName()
     action = ChoicesDisplay(Action.ACTIONS)
+    street = GenericUrl(Street, view_name='street-detail')
     _recurse_exclude = ['action']
 
     class Meta(ModelAccessor.Meta):
         model = Action
         ordering = ['street', 'sequence_no']
-        fields = ['id', 'action', 'street', 'sequence_no', 'player', 'amount']
+        fields = ['id', 'url', 'action', 'street', 'sequence_no', 'player', 'amount']
 
 
-class BaseStreetSerializer(ModelAccessor):
-    actions = BaseActionSerializer(many=True)
+class StreetSerializer(ModelAccessor):
+    actions = ActionSerializer(many=True)
     name = ChoicesDisplay(Street.STREET_NAMES)
+    hand_history = GenericUrl(HandHistory, view_name='handhistory-detail')
     cascade_create = {'actions': 'street'}
     _recurse_exclude = ['street']
 
     class Meta(ModelAccessor.Meta):
         model = Street
         ordering = ['hand_history', 'name']
-        fields = ['id', 'hand_history', 'name', 'actions', 'cards']
+        fields = ['id', 'url', 'hand_history', 'name', 'actions', 'cards']
 
-
-# Final serializers, used in views
 
 class PlayerSerializer(ModelAccessor):
-
     class Meta:
         model = Player
         fields = ['id', 'url', 'name']
 
 
-class StreetSerializer(BaseStreetSerializer):
-    hand_history = HandHistoryUrl()
-
-    class Meta(BaseStreetSerializer.Meta):
-        fields = BaseStreetSerializer.Meta.fields + ['url']
-
-
-class ActionSerializer(BaseActionSerializer):
-    street = BaseStreetSerializer()
-
-    class Meta(BaseActionSerializer.Meta):
-        fields = BaseActionSerializer.Meta.fields + ['url']
-
-
-class SeatSerializer(BaseSeatSerializer):
-    hand_history = HandHistoryUrl()
-
-    class Meta(BaseSeatSerializer.Meta):
-        fields = BaseSeatSerializer.Meta.fields + ['url']
-
-
 class HandHistorySerializer(ModelAccessor):
-    streets = BaseStreetSerializer(many=True)
-    seats = BaseSeatSerializer(many=True)
+    streets = StreetSerializer(many=True)
+    seats = SeatSerializer(many=True)
     _recurse_exclude = ['hand_history']
     cascade_create = {'streets': 'hand_history', 'seats': 'hand_history'}
 
