@@ -183,12 +183,11 @@ class StreetSerializer(ModelAccessor):
 
 
 class PlayerSerializer(ModelAccessor):
-    vpip = fields.ReadOnlyField(source='get_vpip')
-    pfr = fields.ReadOnlyField(source='get_pfr')
+    stats = fields.ReadOnlyField(source='get_stats')
 
     class Meta:
         model = Player
-        fields = ['id', 'url', 'name', 'vpip', 'pfr']
+        fields = ['id', 'url', 'name', 'stats']
 
 
 class HandHistorySerializer(ModelAccessor):

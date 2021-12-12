@@ -1,39 +1,92 @@
 from django.db import models
 from django.core.validators import MinValueValidator
 from django.contrib.postgres.fields import ArrayField
+from collections import Counter
+
+
+class PlayerStat:
+    """A stat point, expressed in percentage of a hand history subset"""
+    name = ''
+
+    @staticmethod
+    def is_in_set(player_id, streets, actions):
+        return True
+
+    @staticmethod
+    def is_in_subset(player_id, streets, actions):
+        return True
+
+
+class VpipStat(PlayerStat):
+    name = 'vpip'
+
+    @staticmethod
+    def is_in_subset(player_id, streets, actions):
+        return any(action.action in {2, 4, 5} and action.player_id == player_id for action in actions)
+
+
+class PfrStat(PlayerStat):
+    name = 'pfr'
+
+    @staticmethod
+    def is_in_subset(player_id, streets, actions):
+        return any(action.action in {4, 5}
+                   and action.player_id == player_id
+                   and action.street.name == 0
+                   for action in actions)
+
+
+class ThreeBetStat(PlayerStat):
+    name = "threebet"
+
+    @staticmethod
+    def is_in_subset(player_id, streets, actions):
+        return any(action.action in {4, 5}
+                   and action.player_id == player_id
+                   and action.street.name == 0
+                   for action in actions)
+
+    @staticmethod
+    def is_in_set(player_id, streets, actions):
+        player_actions = [action for action in actions if action.player_id == player_id and action.action != 0]
+        if not player_actions:
+            return False
+        player_seq_no = min(player_actions)
+        return any(action.action in {4, 5}
+                   and action.sequence_no < player_seq_no
+                   and action.street.name == 0
+                   for action in actions)
+
+
+class PlayerStats:
+    """A getter providing hand history statistics summary for a given Player."""
+
+    def __init__(self, player_id, stats):
+        self.player_id = player_id
+        self.stats = stats
+
+    def get_value(self):
+        data = HandHistory.objects.all().filter(seats__player_id=self.player_id)
+        set_hits = Counter()
+        subset_hits = Counter()
+        for hand_history in data:
+            streets = Street.objects.all().filter(hand_history_id=hand_history.id)
+            street_ids = [street.id for street in streets]
+            actions = Action.objects.all().filter(street_id__in=street_ids)
+            for stat in self.stats:
+                if stat.is_in_set(self.player_id, streets, actions):
+                    set_hits[stat.name] += 1
+                    if stat.is_in_subset(self.player_id, streets, actions):
+                        subset_hits[stat.name] += 1
+        return {stat.name: 100 * subset_hits[stat.name] / max(set_hits[stat.name], 1) for stat in self.stats}
 
 
 class Player(models.Model):
     """A poker player. Identified by id or name."""
     name = models.CharField(max_length=48, unique=True)
 
-    def _get_stat(self, num_predicate, denom_predicate):
-        data = HandHistory.objects.all().filter(seats__player_id=self.id)
-        numerator = 0
-        denominator = 0
-        for hh in data:
-            if not denom_predicate(hh):
-                continue
-            next_data = False
-            streets = Street.objects.all().filter(hand_history_id=hh.id)
-            for street in streets:
-                actions = Action.objects.all().filter(street_id=street.id)
-                for action in actions:
-                    if num_predicate(action) and action.player_id == self.id:
-                        numerator += 1
-                        next_data = True
-                        break
-                if next_data:
-                    break
-        return 100 * numerator / max(denominator, 1)
-
-    def get_vpip(self):
-        return self._get_stat(num_predicate=lambda action: action.action in {2, 4, 5},
-                              denom_predicate=lambda hh: True)
-
-    def get_pfr(self):
-        return self._get_stat(num_predicate=lambda action: action.street.name == 0 and action.action in {4, 5},
-                              denom_predicate=lambda hh: True)
+    def get_stats(self):
+        return PlayerStats(self.id, (VpipStat, PfrStat, ThreeBetStat)).get_value()
 
 
 class HandHistory(models.Model):

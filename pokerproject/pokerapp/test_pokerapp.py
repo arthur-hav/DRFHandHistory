@@ -79,6 +79,7 @@ test_hh_full = {
     }
 
 
+@pytest.mark.freeze_time('1999-12-31')
 class TestPokerApp:
     fixture = ['login']
 
@@ -90,7 +91,6 @@ class TestPokerApp:
         self.street = insert_data(Street, dict(hand_history=self.hh, **test_street))
         self.action = insert_data(Action, dict(player=self.player, street=self.street, **test_action))
 
-    @pytest.mark.freeze_time('1999-12-31')
     def test_hand_history_single_get(self, login, setup_test_data):
         hh_data = login.get(f'/hand_history/{self.hh.id}/', content_type='application/json').json()
 
@@ -116,27 +116,50 @@ class TestPokerApp:
                                       'id': self.action.id}]
         assert 'url' in hh_data
 
-    @pytest.mark.parametrize("model,url,num_keys",
-                             [(HandHistory, '/hand_history/', 5),
-                              (Player, '/players/', 5),
-                              (Seat, '/seats/', 6),
-                              (Action, '/actions/', 7),
-                              (Street, '/streets/', 6)])
-    def test_list_get(self, login, model, url, num_keys, setup_test_data):
-        data = login.get(url, content_type='application/json').json()
+    def test_list_get_hand_history(self, login, setup_test_data):
+        data = login.get('/hand_history/', content_type='application/json').json()
         assert {'count', 'next', 'previous'}.issubset(data.keys())
-        assert 1 == data['count']
-        assert 1 == len(data['results'])
-        assert len(data['results'][0]) == num_keys
+        assert data['count'] == 1
+        assert len(data['results']) == 1
+        assert data['results'][0]['date_played'] == '1999-12-31T00:00:00Z'
+
+    def test_list_get_player(self, login, setup_test_data):
+        data = login.get('/players/', content_type='application/json').json()
+        assert {'count', 'next', 'previous'}.issubset(data.keys())
+        assert data['count'] == 1
+        assert len(data['results']) == 1
+        assert data['results'][0]['stats'] == {'vpip': 0.0, 'pfr': 0.0, 'threebet': 0.0}
+
+    def test_list_get_seat(self, login, setup_test_data):
+        data = login.get('/seats/', content_type='application/json').json()
+        assert {'count', 'next', 'previous'}.issubset(data.keys())
+        assert data['count'] == 1
+        assert len(data['results']) == 1
+        assert {'seat', 'chips', 'player', 'id', 'url'}.issubset(set(data['results'][0].keys()))
+
+    def test_list_get_action(self, login, setup_test_data):
+        data = login.get('/actions/', content_type='application/json').json()
+        assert {'count', 'next', 'previous'}.issubset(data.keys())
+        assert data['count'] == 1
+        assert len(data['results']) == 1
+        assert {'action', 'amount', 'sequence_no', 'player', 'id', 'url'}.issubset(set(data['results'][0].keys()))
+
+    def test_list_get_street(self, login, setup_test_data):
+        data = login.get('/streets/', content_type='application/json').json()
+        assert {'count', 'next', 'previous'}.issubset(data.keys())
+        assert data['count'] == 1
+        assert len(data['results']) == 1
+        assert len(data['results'][0]['actions']) == 1
 
     @pytest.mark.parametrize("model,post_data,url,num_keys",
                              [(HandHistory, {}, '/hand_history/', 5),
-                              (Player, post_player, '/players/', 5),
+                              (Player, post_player, '/players/', 4),
                               (Seat, post_seat, '/seats/', 6),
                               (Action, post_action, '/actions/', 7),
                               (Street, post_street, '/streets/', 6)])
     def test_single_post(self, login, model, post_data, url, num_keys):
         data = login.post(url, content_type='application/json', data=post_data).json()
+        assert len(list(model.objects.all())) == 1
         db_data = model.objects.get(pk=data['id'])
         assert len(data.keys()) == num_keys
 
