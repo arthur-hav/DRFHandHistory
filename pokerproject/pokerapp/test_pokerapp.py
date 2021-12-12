@@ -3,24 +3,33 @@ from freezegun import freeze_time
 from django.test import Client
 from pokerapp.models import HandHistory, Player, Seat, Action, Street
 from django.contrib.auth.models import User
+from unittest import mock
 
 
 @pytest.fixture
-def login(transactional_db):
+def mock_redis():
+    patched_cursor = mock.MagicMock()
+    patched_cursor.get.return_value = 666
+    patched_redis = mock.MagicMock()
+    patched_redis.return_value = patched_cursor
+    with mock.patch('redis.Redis', patched_redis):
+        yield patched_redis, patched_cursor
+
+
+@pytest.fixture()
+def fake_reset_hands_played():
+    def stub():
+        raise Exception("Shouldn't happen")
+    with mock.patch.object(Player, 'reset_hands_played', lambda: stub) as fake_method:
+        yield fake_method
+
+
+@pytest.fixture
+def login(transactional_db, mock_redis):
     new_user = User.objects.create_user('test_user', 'someemail@somehost.org', 'password')
     client = Client()
     client.force_login(new_user)
     return client
-
-
-@pytest.fixture
-def insert_data():
-    def insert(model, data):
-        obj = model.objects.create(**data)
-        obj.save()
-        return obj
-
-    return insert
 
 
 test_player = {'name': 'Test Player'}
@@ -83,12 +92,12 @@ class TestPokerApp:
     fixture = ['login']
 
     @pytest.fixture
-    def setup_test_data(self, insert_data):
-        self.player = insert_data(Player, test_player)
-        self.hh = insert_data(HandHistory, {})
-        self.seat = insert_data(Seat, dict(player=self.player, hand_history=self.hh, **test_seat))
-        self.street = insert_data(Street, dict(hand_history=self.hh, **test_street))
-        self.action = insert_data(Action, dict(player=self.player, street=self.street, **test_action))
+    def setup_test_data(self):
+        self.player = Player.objects.create(**test_player)
+        self.hh = HandHistory.objects.create()
+        self.seat = Seat.objects.create(**dict(player=self.player, hand_history=self.hh, **test_seat))
+        self.street = Street.objects.create(**dict(hand_history=self.hh, **test_street))
+        self.action = Action.objects.create(**dict(player=self.player, street=self.street, **test_action))
 
     def test_hand_history_single_get(self, login, setup_test_data):
         hh_data = login.get(f'/hand_history/{self.hh.id}/', content_type='application/json').json()
@@ -122,12 +131,29 @@ class TestPokerApp:
         assert len(data['results']) == 1
         assert data['results'][0]['date_played'] == '1999-12-31T00:00:00Z'
 
-    def test_list_get_player(self, login, setup_test_data):
+    @mock.patch('pokerapp.models.Player.reset_hands_played', mock.MagicMock)
+    def test_list_get_player(self, fake_reset_hands_played, login, setup_test_data):
         data = login.get('/players/', content_type='application/json').json()
         assert {'count', 'next', 'previous'}.issubset(data.keys())
         assert data['count'] == 1
         assert len(data['results']) == 1
-        assert data['results'][0]['stats'] == {'vpip': 0.0, 'pfr': 0.0, 'threebet': 0.0}
+        assert data['results'][0]['hands_played'] == 666
+
+    def test_hand_count_invalide_cache(self, mock_redis, login, setup_test_data):
+        fake_redis, fake_cursor = mock_redis
+        fake_cursor.get.return_value = None
+        data = login.get('/players/', content_type='application/json').json()
+        assert data['results'][0]['hands_played'] == 1
+        assert fake_cursor.set.called
+        assert fake_cursor.set.call_args[0][1] == 1
+
+    def test_increment_hand_count_cache(self, mock_redis, fake_reset_hands_played, login, setup_test_data):
+        fake_redis, fake_cursor = mock_redis
+        new_hh = HandHistory.objects.create()
+        new_seat = Seat.objects.create(hand_history=new_hh, player=self.player, **test_seat)
+        data = login.get('/players/', content_type='application/json').json()
+        assert data['results'][0]['hands_played'] == 666
+        assert fake_cursor.incr.called
 
     def test_list_get_seat(self, login, setup_test_data):
         data = login.get('/seats/', content_type='application/json').json()
@@ -165,9 +191,9 @@ class TestPokerApp:
         db_data = model.objects.get(pk=data['id'])
         assert len(data.keys()) == num_keys
 
-    def test_street_cascade_post(self, login, insert_data):
-        player = insert_data(Player, test_player)
-        hh = insert_data(HandHistory, {})
+    def test_street_cascade_post(self, login):
+        player = Player.objects.create(**test_player)
+        hh = HandHistory.objects.create()
 
         street = login.post('/streets/', data=dict(hand_history=hh.id, **test_street_nested),
                             content_type='application/json')
@@ -180,19 +206,19 @@ class TestPokerApp:
         assert action.street_id == street.id
         assert action.player_id == player.id
 
-    def test_playerhand_view(self, login, insert_data):
-        player1 = insert_data(Player, test_player)
-        player2 = insert_data(Player, {'name': 'player2'})
-        hh1 = insert_data(HandHistory, {})
-        hh2 = insert_data(HandHistory, {})
-        insert_data(Seat, dict(player=player1, hand_history=hh1, **test_seat))
-        insert_data(Seat, dict(player=player2, hand_history=hh2, **test_seat))
+    def test_playerhand_view(self, login):
+        player1 = Player.objects.create(**test_player)
+        player2 = Player.objects.create(name='player2')
+        hh1 = HandHistory.objects.create()
+        hh2 = HandHistory.objects.create()
+        Seat.objects.create(**dict(player=player1, hand_history=hh1, **test_seat))
+        Seat.objects.create(**dict(player=player2, hand_history=hh2, **test_seat))
 
         data = login.get('/player_hands/player2/', content_type='application/json').json()
         assert data == {'player2': [f'http://testserver/hand_history/{hh2.id}/']}
 
-    def test_hand_history_cascade_post(self, login, insert_data):
-        player = insert_data(Player, test_player)
+    def test_hand_history_cascade_post(self, login):
+        player = Player.objects.create(**test_player)
 
         hh = login.post('/hand_history/', data=test_hh_full, content_type='application/json')
 

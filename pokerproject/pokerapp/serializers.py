@@ -193,11 +193,11 @@ class StreetSerializer(NestedModelSerializer):
 
 
 class PlayerSerializer(NestedModelSerializer):
-    stats = fields.ReadOnlyField(source='get_stats')
+    hands_played = fields.ReadOnlyField()
 
     class Meta:
         model = Player
-        fields = ['id', 'url', 'name', 'stats']
+        fields = ['id', 'url', 'name', 'hands_played']
 
 
 class HandHistorySerializer(NestedModelSerializer):
