@@ -15,5 +15,6 @@ router.register(r'streets', views.StreetViewSet)
 urlpatterns = [
     path('', include(router.urls)),
     path(r'player_hands/<player_name>/', views.PlayerHandsView.as_view(), name='player_hands'),
+    path(r'player_stats/<player_name>/', views.PlayerStatsView.as_view(), name='player_stats'),
     path('api-auth/', include('rest_framework.urls', namespace='rest_framework'))
 ]

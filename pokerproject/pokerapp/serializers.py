@@ -71,9 +71,15 @@ class ExcludeFieldListSerializer(serializers.ListSerializer, ABC):
 class GenericUrl(serializers.HyperlinkedRelatedField):
     """Handy shortcut to display hand history as a link, but accept a simple id as post"""
     def __init__(self, ref_model, *args, **kwargs):
-        kwargs['read_only'] = True
+        kwargs['queryset'] = ref_model.objects.all()
+        kwargs['required'] = False
         super().__init__(*args, **kwargs)
         self.__ref_model = ref_model
+
+    def to_internal_value(self, data):
+        if isinstance(data, int):
+            return self.__ref_model.objects.get(pk=data)
+        return super().to_internal_value(data)
 
     def to_representation(self, value):
         if isinstance(value, int):
@@ -190,5 +196,5 @@ class HandHistorySerializer(ModelAccessor):
     class Meta(ModelAccessor.Meta):
         model = HandHistory
         ordering = ['date_played']
-        fields = ['id', 'url', 'date_played', 'streets', 'seats', 'url']
+        fields = ['id', 'url', 'date_played', 'streets', 'seats']
 
