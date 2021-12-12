@@ -169,7 +169,7 @@ class ActionSerializer(ModelAccessor):
 
 
 class StreetSerializer(ModelAccessor):
-    actions = ActionSerializer(many=True)
+    actions = ActionSerializer(many=True, required=False)
     name = ChoicesDisplay(Street.STREET_NAMES)
     hand_history = GenericUrl(HandHistory, view_name='handhistory-detail')
     cascade_create = {'actions': 'street'}
@@ -188,8 +188,8 @@ class PlayerSerializer(ModelAccessor):
 
 
 class HandHistorySerializer(ModelAccessor):
-    streets = StreetSerializer(many=True)
-    seats = SeatSerializer(many=True)
+    streets = StreetSerializer(many=True, required=False)
+    seats = SeatSerializer(many=True, required=False)
     _recurse_exclude = ['hand_history']
     cascade_create = {'streets': 'hand_history', 'seats': 'hand_history'}
 
