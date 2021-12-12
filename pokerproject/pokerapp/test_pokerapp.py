@@ -28,10 +28,12 @@ test_seat = {'chips': 2000, 'seat': 0}
 test_action = {'action': 0, 'amount': 100, 'sequence_no': 1}
 test_street = {'name': 0, 'cards': None}
 
-post_player = test_player
+post_player = {'name': 'Other Player'}
 post_seat = {'chips': 2000, 'seat': 0, 'player': 'Test Player'}
-post_action = {'action': 0, 'amount': 100, 'sequence_no': 1, 'player': 'Test Player'}
+post_action = {'action': 0, 'amount': 200, 'sequence_no': 2, 'player': 'Test Player'}
 post_street = {'name': 0, 'cards': None}
+
+append_action = {'action': 0, 'amount': 200, 'player': 'Test Player'}
 
 post_seat_missing = {'seat': 0, 'player': 'Test Player'}
 post_action_missing = test_action
@@ -39,8 +41,7 @@ post_street_missing = {'cards': None}
 
 test_street_nested = {'name': 0, 'actions': [{'player': 'Test Player',
                                               'action': 'Blind',
-                                              'amount': 100,
-                                              'sequence_no': 1}]}
+                                              'amount': 100}]}
 test_hh_full = {
     "date_played": "2021-12-11T10:55:32.149294Z",
     "streets": [
@@ -50,13 +51,11 @@ test_hh_full = {
             "actions": [
                 {
                     "action": "Blind",
-                    "sequence_no": 1,
                     "player": "Dom Twan",
                     "amount": 5
                     },
                 {
                     "action": "Blind",
-                    "sequence_no": 2,
                     "player": "Antrick Patonius",
                     "amount": 10
                     }
@@ -151,19 +150,22 @@ class TestPokerApp:
         assert len(data['results']) == 1
         assert len(data['results'][0]['actions']) == 1
 
-    @pytest.mark.parametrize("model,post_data,url,num_keys",
-                             [(HandHistory, {}, '/hand_history/', 5),
-                              (Player, post_player, '/players/', 4),
-                              (Seat, post_seat, '/seats/', 6),
-                              (Action, post_action, '/actions/', 7),
-                              (Street, post_street, '/streets/', 6)])
-    def test_single_post(self, login, model, post_data, url, num_keys):
+    @pytest.mark.parametrize("model,post_data,url,num_keys,test_data",
+                             [(HandHistory, {}, '/hand_history/', 5, {}),
+                              (Player, post_player, '/players/', 4, {}),
+                              (Seat, post_seat, '/seats/', 6, {'hand_history': 'hh'}),
+                              (Action, post_action, '/actions/', 7, {'street': 'street'}),
+                              (Street, post_street, '/streets/', 6, {'hand_history': 'hh'})])
+    def test_single_post(self, login, model, post_data, url, num_keys, test_data, setup_test_data):
+        post_data = post_data
+        for k, v in test_data.items():
+            post_data[k] = getattr(self, v).id
         data = login.post(url, content_type='application/json', data=post_data).json()
-        assert len(list(model.objects.all())) == 1
+        assert len(list(model.objects.all())) == 2
         db_data = model.objects.get(pk=data['id'])
         assert len(data.keys()) == num_keys
 
-    def test_insert_cascade_street(self, login, insert_data):
+    def test_street_cascade_post(self, login, insert_data):
         player = insert_data(Player, test_player)
         hh = insert_data(HandHistory, {})
 
@@ -189,7 +191,7 @@ class TestPokerApp:
         data = login.get('/player_hands/player2/', content_type='application/json').json()
         assert data == {'player2': [f'http://testserver/hand_history/{hh2.id}/']}
 
-    def test_hand_history_post(self, login, insert_data):
+    def test_hand_history_cascade_post(self, login, insert_data):
         player = insert_data(Player, test_player)
 
         hh = login.post('/hand_history/', data=test_hh_full, content_type='application/json')
@@ -199,6 +201,20 @@ class TestPokerApp:
         assert len(list(Street.objects.all())) == 1
         assert len(list(Seat.objects.all())) == 2
 
+    def test_validator_append_action(self, login, setup_test_data):
+        response = login.post('/actions/', data=dict(street=self.street.id, **append_action),
+                              content_type='application/json')
+        assert response.status_code == 201
+        assert len(list(Action.objects.all())) == 2
+        assert response.json()['sequence_no'] == 2
+
+    def test_validator_400_action(self, login, setup_test_data):
+        response = login.post('/actions/', data=dict(street=self.street.id, sequence_no=1, **append_action),
+                              content_type='application/json')
+        assert response.status_code == 400
+        assert len(list(Action.objects.all())) == 1
+        assert 'sequence_no' in response.json()['non_field_errors']
+
     @pytest.mark.parametrize("post_data,missing_key,url",
                              [(post_seat_missing, 'chips', '/seats/'),
                               (post_action_missing, 'player', '/actions/'),
@@ -206,5 +222,7 @@ class TestPokerApp:
     def test_400_field_required(self, login, post_data, missing_key, url):
         response = login.post(url, content_type='application/json', data=post_data)
         assert response.status_code == 400
-        assert len(response.json()) == 1
+        assert len(list(Action.objects.all())) == 0
+        assert len(list(Street.objects.all())) == 0
+        assert len(list(Seat.objects.all())) == 0
         assert missing_key in response.json()

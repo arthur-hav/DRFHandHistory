@@ -48,10 +48,11 @@ class ThreeBetStat(PlayerStat):
 
     @staticmethod
     def is_in_set(player_id, streets, actions):
-        player_actions = [action for action in actions if action.player_id == player_id and action.action != 0]
-        if not player_actions:
+        player_sequence_no = [action.sequence_no for action in actions
+                              if action.player_id == player_id and action.action != 0]
+        if not player_sequence_no:
             return False
-        player_seq_no = min(player_actions)
+        player_seq_no = min(player_sequence_no)
         return any(action.action in {4, 5}
                    and action.sequence_no < player_seq_no
                    and action.street.name == 0

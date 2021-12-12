@@ -13,6 +13,7 @@ from abc import ABC
 from .models import Player, Seat, Action, HandHistory, Street
 from django.db.models import ObjectDoesNotExist, Manager
 from rest_framework import serializers, relations, fields
+from rest_framework.exceptions import ValidationError
 
 
 class PlayerName(serializers.RelatedField):
@@ -45,22 +46,23 @@ class ChoicesDisplay(serializers.IntegerField):
         super().__init__(**kwargs)
 
     def to_internal_value(self, data):
-        if isinstance(data, int):
-            return data
         for internal_value, display_value in self.__choice_list:
+            if internal_value == data:
+                return data
             if display_value == data:
                 return internal_value
-        raise ValueError(f'Invalid closed list {data}. Possible values {[choice[1] for choice in self.__choice_list]}')
+        raise ValueError(f'Invalid closed list reference {data}.'
+                         f' Possible values {[choice[1] for choice in self.__choice_list]}')
 
     def to_representation(self, value):
         return self.__choice_list[value][1]
 
 
-class ExcludeFieldListSerializer(serializers.ListSerializer, ABC):
+class NestedListSerializer(serializers.ListSerializer):
 
     def to_representation_exclude(self, data, exclude=None):
         iterable = data.all() if isinstance(data, Manager) else data
-        if isinstance(self.child, (ExcludeFieldListSerializer, ModelAccessor)):
+        if isinstance(self.child, (NestedListSerializer, NestedModelSerializer)):
             return [self.child.to_representation_exclude(item, exclude) for item in iterable]
         return [self.child.to_representation(item) for item in iterable]
 
@@ -89,20 +91,16 @@ class GenericUrl(serializers.HyperlinkedRelatedField):
         return super().to_representation(value)
 
 
-class ModelAccessor(serializers.HyperlinkedModelSerializer):
+class NestedModelSerializer(serializers.ModelSerializer):
     """Permit a modified nested view of the models.
 
     Serializers using this accessor for a related model field have access to 3 behaviors:
     - When using GET, display the inner model fields
     - When using POST with a PK, link to an existing object
-    - When using POST with data, create a son object in cascade
+    - When using POST with data, create son objects in cascade
     """
     cascade_create = {}
-
-    def to_internal_value(self, data):
-        if isinstance(data, int):
-            return data
-        return super().to_internal_value(data)
+    view_exclude = []
 
     def create(self, validated_data):
         cascade_fields = {}
@@ -112,10 +110,9 @@ class ModelAccessor(serializers.HyperlinkedModelSerializer):
         new_obj = super().create(validated_data)
         for key, cascade_data in cascade_fields.items():
             cascade_serializer = self.fields[key]
-            cascade_objects = cascade_serializer.create(cascade_data)
-            for cascade_object in cascade_objects:
-                setattr(cascade_object, self.cascade_create[key] + '_id', new_obj.id)
-                cascade_object.save()
+            for cascade_dict in cascade_data:
+                cascade_dict[self.cascade_create[key]] = new_obj
+            cascade_serializer.create(cascade_data)
         return new_obj
 
     def to_representation_exclude(self, instance, exclude=None):
@@ -131,9 +128,9 @@ class ModelAccessor(serializers.HyperlinkedModelSerializer):
             check_for_none = attribute.pk if isinstance(attribute, relations.PKOnlyObject) else attribute
             if check_for_none is None:
                 ret[field.field_name] = None
-            elif isinstance(field, (ModelAccessor, ExcludeFieldListSerializer)):
+            elif isinstance(field, (NestedModelSerializer, NestedListSerializer)):
                 ret[field.field_name] = field.to_representation_exclude(attribute,
-                                                                        exclude=exclude + self._recurse_exclude)
+                                                                        exclude=exclude + self.view_exclude)
             else:
                 ret[field.field_name] = field.to_representation(attribute)
         return ret
@@ -142,47 +139,60 @@ class ModelAccessor(serializers.HyperlinkedModelSerializer):
         return self.to_representation_exclude(instance)
 
     class Meta:
-        list_serializer_class = ExcludeFieldListSerializer
+        list_serializer_class = NestedListSerializer
 
 
-class SeatSerializer(ModelAccessor):
+class SeatSerializer(NestedModelSerializer):
     player = PlayerName()
     seat = ChoicesDisplay(Seat.SEATS)
-    _recurse_exclude = ['hand_history']
+    view_exclude = ['hand_history']
     hand_history = GenericUrl(HandHistory, view_name='handhistory-detail')
 
-    class Meta(ModelAccessor.Meta):
+    class Meta(NestedModelSerializer.Meta):
         ordering = ['seat']
         model = Seat
         fields = ['id', 'url', 'player', 'seat', 'chips', 'hand_history']
 
 
-class ActionSerializer(ModelAccessor):
+class ActionSerializer(NestedModelSerializer):
     player = PlayerName()
     action = ChoicesDisplay(Action.ACTIONS)
+    sequence_no = fields.IntegerField(required=False)
     street = GenericUrl(Street, view_name='street-detail')
-    _recurse_exclude = ['action']
+    view_exclude = ['action']
 
-    class Meta(ModelAccessor.Meta):
+    class Meta(NestedModelSerializer.Meta):
         model = Action
         ordering = ['street', 'sequence_no']
         fields = ['id', 'url', 'action', 'street', 'sequence_no', 'player', 'amount']
 
+    def validate(self, attrs):
+        if 'street' in attrs and 'sequence_no' in attrs:
+            count = Action.objects.all().filter(street=attrs['street'], sequence_no=attrs['sequence_no']).count()
+            if count != 0:
+                raise ValidationError(['street', 'sequence_no', 'Street and sequence_no must be unique per Action'])
+        return attrs
 
-class StreetSerializer(ModelAccessor):
+    def create(self, validated_data):
+        if 'sequence_no' not in validated_data:
+            validated_data['sequence_no'] = Action.objects.all().filter(street=validated_data['street']).count() + 1
+        return super().create(validated_data)
+
+
+class StreetSerializer(NestedModelSerializer):
     actions = ActionSerializer(many=True, required=False)
     name = ChoicesDisplay(Street.STREET_NAMES)
     hand_history = GenericUrl(HandHistory, view_name='handhistory-detail')
     cascade_create = {'actions': 'street'}
-    _recurse_exclude = ['street']
+    view_exclude = ['street']
 
-    class Meta(ModelAccessor.Meta):
+    class Meta(NestedModelSerializer.Meta):
         model = Street
         ordering = ['hand_history', 'name']
         fields = ['id', 'url', 'hand_history', 'name', 'actions', 'cards']
 
 
-class PlayerSerializer(ModelAccessor):
+class PlayerSerializer(NestedModelSerializer):
     stats = fields.ReadOnlyField(source='get_stats')
 
     class Meta:
@@ -190,13 +200,13 @@ class PlayerSerializer(ModelAccessor):
         fields = ['id', 'url', 'name', 'stats']
 
 
-class HandHistorySerializer(ModelAccessor):
+class HandHistorySerializer(NestedModelSerializer):
     streets = StreetSerializer(many=True, required=False)
     seats = SeatSerializer(many=True, required=False)
-    _recurse_exclude = ['hand_history']
+    view_exclude = ['hand_history']
     cascade_create = {'streets': 'hand_history', 'seats': 'hand_history'}
 
-    class Meta(ModelAccessor.Meta):
+    class Meta(NestedModelSerializer.Meta):
         model = HandHistory
         ordering = ['date_played']
         fields = ['id', 'url', 'date_played', 'streets', 'seats']

@@ -1,6 +1,5 @@
 from django.urls import include, path
 from rest_framework import routers
-from pokerapp.models import HandHistory
 from pokerapp import views
 
 router = routers.DefaultRouter()
