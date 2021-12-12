@@ -1,5 +1,6 @@
 from django.urls import include, path
 from rest_framework import routers
+from pokerapp.models import HandHistory
 from pokerapp import views
 
 router = routers.DefaultRouter()
@@ -13,5 +14,6 @@ router.register(r'streets', views.StreetViewSet)
 # Additionally, we include login URLs for the browsable API.
 urlpatterns = [
     path('', include(router.urls)),
+    path(r'player_hands/<player_name>/', views.PlayerHandsView.as_view(), name='player_hands'),
     path('api-auth/', include('rest_framework.urls', namespace='rest_framework'))
 ]

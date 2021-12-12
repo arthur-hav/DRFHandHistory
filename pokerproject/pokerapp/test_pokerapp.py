@@ -20,6 +20,7 @@ def insert_data():
         obj = model.objects.create(**data)
         obj.save()
         return obj
+
     return insert
 
 
@@ -32,7 +33,49 @@ class TestPokerApp:
     test_street_nested = {'name': 0, 'actions': [{'player': 'Test Player',
                                                   'action': 'Blind',
                                                   'amount': 100,
-                                                  'sequence_no': 1}],}
+                                                  'sequence_no': 1}]}
+    test_hh_full = {
+        "id": 1,
+        "url": "http://localhost:8000/hand_history/1/",
+        "date_played": "2021-12-11T10:55:32.149294Z",
+        "streets": [
+            {
+                "id": 2,
+                "name": "Preflop",
+                "actions": [
+                    {
+                        "id": 2,
+                        "action": "Blind",
+                        "sequence_no": 1,
+                        "player": "Dom Twan",
+                        "amount": 5
+                        },
+                    {
+                        "id": 3,
+                        "action": "Blind",
+                        "sequence_no": 2,
+                        "player": "Antrick Patonius",
+                        "amount": 10
+                        }
+                    ],
+                "cards": None
+                }
+            ],
+        "seats": [
+            {
+                "id": 1,
+                "player": "Dom Twan",
+                "seat": "SB",
+                "chips": 333
+                },
+            {
+                "id": 2,
+                "player": "Antrick Patonius",
+                "seat": "BB",
+                "chips": 444
+                }
+            ]
+        }
 
     @pytest.fixture
     def setup_test_data(self, insert_data):
@@ -65,7 +108,7 @@ class TestPokerApp:
 
     @pytest.mark.parametrize("model,url,num_keys",
                              [(HandHistory, '/hand_history/', 5),
-                              (Player, '/players/', 4),
+                              (Player, '/players/', 3),
                               (Seat, '/seats/', 6),
                               (Action, '/actions/', 7),
                               (Street, '/streets/', 6)])
@@ -87,5 +130,23 @@ class TestPokerApp:
         assert len(list(Street.objects.all())) == 1
         action = next(iter(Action.objects.all()))
         street = next(iter(Street.objects.all()))
-        assert action.street == street.id
-        assert action.player == player.id
+        assert action.street_id == street.id
+        assert action.player_id == player.id
+
+    def test_playerhand_view(self, login, insert_data):
+        player1 = insert_data(Player, self.test_player)
+        player2 = insert_data(Player, {'name': 'player2'})
+        hh1 = insert_data(HandHistory, {})
+        hh2 = insert_data(HandHistory, {})
+        insert_data(Seat, dict(player=player1, hand_history=hh1, **self.test_seat))
+        insert_data(Seat, dict(player=player2, hand_history=hh2, **self.test_seat))
+
+        data = login.get('/player_hands/player2/', content_type='application/json').json()
+        assert data == {'player2': [f'http://testserver/hand_history/{hh2.id}/']}
+
+    def test_hand_history_post(self, login, insert_data):
+        player = insert_data(Player, self.test_player)
+
+        hh = login.post('/hand_history/', data=self.test_hh_full, content_type='application/json')
+
+        assert hh.status_code == 201
