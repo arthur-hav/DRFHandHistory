@@ -1,7 +1,7 @@
 import pytest
 from freezegun import freeze_time
 from django.test import Client
-from pokerapp.models import HandHistory, Player, Seat, Action, Street
+from pokerapp.models import HandHistory, Player, Seat, Action, Street, AbstractRedisStat
 from django.contrib.auth.models import User
 from unittest import mock
 
@@ -18,9 +18,8 @@ def mock_redis():
 
 @pytest.fixture()
 def fake_reset_hands_played():
-    def stub():
-        raise Exception("Shouldn't happen")
-    with mock.patch.object(Player, 'reset_hands_played', lambda: stub) as fake_method:
+    with mock.patch.object(AbstractRedisStat, 'reset',
+                           side_effect=Exception('Unnecessary call to underlying reset method')) as fake_method:
         yield fake_method
 
 
@@ -131,7 +130,6 @@ class TestPokerApp:
         assert len(data['results']) == 1
         assert data['results'][0]['date_played'] == '1999-12-31T00:00:00Z'
 
-    @mock.patch('pokerapp.models.Player.reset_hands_played', mock.MagicMock)
     def test_list_get_player(self, fake_reset_hands_played, login, setup_test_data):
         data = login.get('/players/', content_type='application/json').json()
         assert {'count', 'next', 'previous'}.issubset(data.keys())
@@ -144,8 +142,9 @@ class TestPokerApp:
         fake_cursor.get.return_value = None
         data = login.get('/players/', content_type='application/json').json()
         assert data['results'][0]['hands_played'] == 1
-        assert fake_cursor.set.called
-        assert fake_cursor.set.call_args[0][1] == 1
+        assert data['results'][0]['vpip'] == 0
+        assert mock.call(f'hands.{self.player.id}', 1) in fake_cursor.set.call_args_list
+        assert mock.call(f'vpip.{self.player.id}', 0) in fake_cursor.set.call_args_list
 
     def test_increment_hand_count_cache(self, mock_redis, fake_reset_hands_played, login, setup_test_data):
         fake_redis, fake_cursor = mock_redis
@@ -153,7 +152,8 @@ class TestPokerApp:
         new_seat = Seat.objects.create(hand_history=new_hh, player=self.player, **test_seat)
         data = login.get('/players/', content_type='application/json').json()
         assert data['results'][0]['hands_played'] == 666
-        assert fake_cursor.incr.called
+        assert mock.call(f'hands.{self.player.id}') in fake_cursor.incr.call_args_list
+        assert mock.call(f'vpip.{self.player.id}') not in fake_cursor.incr.call_args_list
 
     def test_list_get_seat(self, login, setup_test_data):
         data = login.get('/seats/', content_type='application/json').json()
@@ -178,7 +178,7 @@ class TestPokerApp:
 
     @pytest.mark.parametrize("model,post_data,url,num_keys,test_data",
                              [(HandHistory, {}, '/hand_history/', 5, {}),
-                              (Player, post_player, '/players/', 4, {}),
+                              (Player, post_player, '/players/', 5, {}),
                               (Seat, post_seat, '/seats/', 6, {'hand_history': 'hh'}),
                               (Action, post_action, '/actions/', 7, {'street': 'street'}),
                               (Street, post_street, '/streets/', 6, {'hand_history': 'hh'})])
