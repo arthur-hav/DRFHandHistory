@@ -5,7 +5,7 @@ It is also favored that tests contain the least possible complex logic as we wou
 engineer them or find bugs in them.
 
 As a result, the number of test is typically big, and sometimes redundant, which is not considered an engineering
-problem or priority, but pytest typically helps reducing the test-writing toil."""
+problem or priority."""
 
 import pytest
 from freezegun import freeze_time
