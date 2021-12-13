@@ -4,6 +4,7 @@ services:
   app:
     build:
       context: .
+    image: drfhandhistory:latest
     ports:
       - "8000:8000"
     command: >
