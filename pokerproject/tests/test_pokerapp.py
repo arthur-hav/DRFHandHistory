@@ -1,3 +1,12 @@
+"""Testing philosophical design revolves around testing the smallest possible units at once, while retaining a great
+overall test coverage (we expect to see no less than 80-90% in production code).
+
+It is also favored that tests contain the least possible complex logic as we would prefer to avoid having to reverse
+engineer them or find bugs in them.
+
+As a result, the number of test is typically big, and sometimes redundant, which is not considered an engineering
+problem or priority, but pytest typically helps reducing the test-writing toil."""
+
 import pytest
 from freezegun import freeze_time
 from django.test import Client

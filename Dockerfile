@@ -4,9 +4,8 @@ ARG DJANGO_SUPERUSER_PASSWORD
 RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
-RUN addgroup --system django
-RUN adduser --system django
-RUN adduser django django
+RUN addgroup --system hostgroup --gid 1000
+RUN adduser --system django --gid 1000
 WORKDIR /opt
 USER django
 COPY requirements.txt ./
